@@ -30,7 +30,10 @@ class HuffmanCompression:
         def _traverse(node, current_code):
             if node is None: return
             if node.char is not None:
-                codes[node.char] = current_code
+                # Single-leaf tree (text with one unique symbol): the natural
+                # empty code is unusable for decoding, so assign an explicit
+                # "0" bit per symbol. Fixes data loss on single-symbol input.
+                codes[node.char] = current_code if current_code else "0"
                 return
             _traverse(node.left, current_code + "0")
             _traverse(node.right, current_code + "1")
@@ -91,6 +94,11 @@ class HuffmanCompression:
         decoded_text = []
         current_node = root
         for bit in bitstring:
+            # Single-leaf tree: every bit decodes one symbol (there is no
+            # child to descend to).
+            if current_node.char is not None:
+                decoded_text.append(current_node.char)
+                continue
             current_node = current_node.left if bit == '0' else current_node.right
             if current_node.char is not None:
                 decoded_text.append(current_node.char)
