@@ -1,56 +1,92 @@
-chhf — Compresión Huffman + Cifrado Caótico (ejemplo)
+# chhf — Compresión Huffman + Cifrado Caótico
 
-**Resumen**
-- **Descripción**: Proyecto de ejemplo que implementa compresión de datos mediante el algoritmo de Huffman y un cifrado por flujo pseudo-aleatorio basado en un generador caótico (mapa logístico). El script demuestra el flujo completo: compresión -> cifrado -> transmisión simulada -> descifrado -> descompresión.
+Proyecto educativo que implementa **compresión de datos real (Huffman)** y un **cifrado por flujo pseudo-aleatorio** basado en un generador caótico (mapa logístico), con el flujo completo: compresión → cifrado → transmisión simulada → descifrado → descompresión.
 
-**Características**
-- **Compresión**: Implementación completa de Huffman (construcción de árbol, generación de códigos, serialización/deserialización).
-- **Cifrado**: Flujo de bytes pseudo-aleatorio generado por un mapa logístico (chaotic keystream) y aplicado mediante XOR.
-- **Demo**: Punto de entrada que ejecuta un ejemplo end-to-end y verifica la integridad del mensaje recuperado.
+## ⚠️ Aviso de seguridad (léelo)
 
-**Requisitos**
-- **Python**: 3.8 o superior.
-- **Dependencias**: Ninguna externa; solo la biblioteca estándar de Python.
+El `ChaoticKeystreamGenerator` (mapa logístico) es **inseguro para uso real**: es determinista, tiene parámetros públicos y se rompe con análisis de спектр/recuperación de estado. Es una demostración didáctica de *stream cipher + XOR*, nada más. Para producción usá `cryptography` (AES-GCM / ChaCha20-Poly1305).
 
-**Instalación**
-- Clona o descarga el repositorio y sitúate en la carpeta del proyecto.
+## Estado del revival (2026-10)
 
-```bash
-git clone <repo-url>   # opcional
-cd chhf
-```
+Este repo vivió años como un solo script sin tests. El revival trajo:
 
-**Uso**
-- Ejecutar el script de demostración:
+- **🐛 Bug fixeado**: la compresión de textos con **un solo símbolo único** (`"aaaa"`, `"a"`) descomprimía a `""` — pérdida total de datos. El árbol de hoja única recibe ahora un código `"0"` explícito y `decompress` maneja ese caso. Regresión cubierta por tests.
+- **🧪 Suite de tests**: 18 tests (round-trip, formato wire, casos borde, keystream caótico).
+- **🖥️ CLI**: comprimí/descomprimí archivos de texto desde la terminal.
+- **📦 Packaging**: proyecto Python instalable (`pyproject.toml`), paquete `chhf`.
+- **🧹 Higiene**: `__pycache__` fuera del repo, `.gitignore`, licencia MIT.
+
+## Instalación
 
 ```bash
-python chhf.py
+pip install .        # o: pip install -e .   para desarrollo
 ```
 
-- Importar y usar programáticamente (ejemplo interactivo):
+## Uso
+
+### Demo end-to-end
 
 ```bash
-python -c "from chhf import process_data; process_data('Mensaje de prueba para compresión y cifrado.')"
+python -m chhf demo
 ```
 
-**Archivos clave**
-- **Script principal**: [chhf.py](chhf.py#L1-L400) — contiene la implementación de `HuffmanCompression`, `ChaoticKeystreamGenerator` y la función `process_data`.
+### CLI de archivos
 
-**API rápida**
-- **`HuffmanCompression`**: Clase con métodos `compress(text: str) -> bytearray` y `decompress(data: bytearray) -> str`.
-- **`ChaoticKeystreamGenerator`**: Generador de bytes pseudo-aleatorios a partir del mapa logístico; inicializar con `x0` y `r_param` (r en rango caótico).
-- **`process_data(message: str)`**: Función que orquesta compresión, cifrado, simulación de transmisión, descifrado y descompresión, imprimiendo resultados.
+```bash
+python -m chhf compress original.txt salida.chhf
+python -m chhf decompress salida.chhf recuperado.txt
+```
 
-**Ejemplos y notas**
-- El parámetro `r` del generador caótico debe estar en el rango caótico (por ejemplo `3.999`).
-- El formato interna de los datos comprimidos es: `[padding_byte] + [árbol_serializado] + [datos_empaquetados]`.
+Solo archivos de **texto UTF-8** (la implementación Huffman opera sobre `str`).
 
-**Contribuir**
-- Sugerencias, mejoras y correcciones son bienvenidas. Abre un issue o un pull request con cambios propuestos.
+### Uso programático
 
-**Licencia**
-- No se incluye un archivo de licencia en el repositorio. Añade un `LICENSE` si quieres publicar con una licencia específica (p. ej. MIT).
+```python
+from chhf import HuffmanCompression, ChaoticKeystreamGenerator
 
-**Autor / Mantenimiento**
-- Mantenimiento: fmayf (usuario local). Para ayuda o preguntas, abre un issue en el repositorio o contacta al mantenedor.
+h = HuffmanCompression()
+comprimido = h.compress("seguridad, seguridad, seguridad")   # -> bytearray
+original = h.decompress(comprimido)                          # -> str
 
+gen = ChaoticKeystreamGenerator(x0=0.7351, r_param=3.999)
+keystream = [gen.next_byte() for _ in range(16)]
+```
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Cubren:
+- Round-trip idéntico: vacío, 1 símbolo, símbolo repetido, ASCII, Unicode/emoji, newlines, texto largo.
+- Ratio de compresión real en datos redundantes.
+- Formato wire `[padding][árbol][datos]` y errores ante árbol corrupto.
+- Keystream caótico: determinismo, rango de bytes, rechazo de `r` fuera del rango caótico (3.5699, 4.0].
+
+## Arquitectura
+
+```
+chhf/
+├── __init__.py     # HuffmanCompression + ChaoticKeystreamGenerator + process_data
+└── __main__.py     # CLI (compress / decompress / demo)
+tests/
+└── test_chhf.py    # 18 tests, stdlib unittest (sin dependencias)
+```
+
+- **HuffmanCompression**: construcción de árbol, códigos, serialización/deserialización del árbol y empaquetado de bits.
+  - Formato: `[1 byte padding] + [árbol serializado] + [bits empaquetados]`
+  - Serialización de hoja: `0x01 [len] [bytes UTF-8]`; nodo interno: `0x00 [subárbol izq] [subárbol der]`.
+- **ChaoticKeystreamGenerator**: keystream de bytes desde el mapa logístico `x = r·x·(1−x)`, tomando 1 bit por iteración.
+
+## Requisitos
+
+- Python ≥ 3.8. **Cero dependencias externas** (solo biblioteca estándar).
+
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
+
+## Autor
+
+[FernandoMay](https://github.com/FernandoMay)

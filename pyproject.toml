@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chhf"
+version = "1.1.0"
+description = "Compresión Huffman + cifrado caótico (mapa logístico) — proyecto educativo con tests"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.setuptools]
+packages = ["chhf"]
